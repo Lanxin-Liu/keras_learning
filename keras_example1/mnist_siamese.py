@@ -1,8 +1,10 @@
-from __future__ import absolute_import
-from __future__ import print_function
+import keras
 import numpy as np
+import matplotlib.pyplot as plt
 
 import random
+
+from keras.callbacks import TensorBoard
 from keras.datasets import mnist
 from keras.models import Model
 from keras.layers import Input, Flatten, Dense, Dropout, Lambda
@@ -29,9 +31,9 @@ def contrastive_loss(y_true, y_pred):
     http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
     '''
     margin = 1
-    square_pred = K.square(y_pred)
+    sqaure_pred = K.square(y_pred)
     margin_square = K.square(K.maximum(margin - y_pred, 0))
-    return K.mean(y_true * square_pred + (1 - y_true) * margin_square)
+    return K.mean(y_true * sqaure_pred + (1 - y_true) * margin_square)
 
 
 def create_pairs(x, digit_indices):
@@ -66,17 +68,24 @@ def create_base_network(input_shape):
     return Model(input, x)
 
 
-def compute_accuracy(y_true, y_pred):
+def compute_accuracy(y_true, y_pred): # numpy上的操作
     '''Compute classification accuracy with a fixed threshold on distances.
     '''
     pred = y_pred.ravel() < 0.5
     return np.mean(pred == y_true)
 
 
-def accuracy(y_true, y_pred):
+def accuracy(y_true, y_pred): # Tensor上的操作
     '''Compute classification accuracy with a fixed threshold on distances.
     '''
     return K.mean(K.equal(y_true, K.cast(y_pred < 0.5, y_true.dtype)))
+
+def plot_train_history(history, train_metrics, val_metrics):
+    plt.plot(history.history.get(train_metrics), '-o')
+    plt.plot(history.history.get(val_metrics), '-o')
+    plt.ylabel(train_metrics)
+    plt.xlabel('Epochs')
+    plt.legend(['train', 'validation'])
 
 
 # the data, split between train and test sets
@@ -103,7 +112,6 @@ input_b = Input(shape=input_shape)
 # because we re-use the same instance `base_network`,
 # the weights of the network
 # will be shared across the two branches
-# 共享两个网络的权重
 processed_a = base_network(input_a)
 processed_b = base_network(input_b)
 
@@ -111,14 +119,24 @@ distance = Lambda(euclidean_distance,
                   output_shape=eucl_dist_output_shape)([processed_a, processed_b])
 
 model = Model([input_a, input_b], distance)
+keras.utils.plot_model(model,"siamModel.png",show_shapes=True)
+model.summary()
 
 # train
 rms = RMSprop()
 model.compile(loss=contrastive_loss, optimizer=rms, metrics=[accuracy])
-model.fit([tr_pairs[:, 0], tr_pairs[:, 1]], tr_y,
+history=model.fit([tr_pairs[:, 0], tr_pairs[:, 1]], tr_y,
           batch_size=128,
-          epochs=epochs,
+          epochs=epochs,verbose=2,
           validation_data=([te_pairs[:, 0], te_pairs[:, 1]], te_y))
+
+plt.figure(figsize=(8, 4))
+plt.subplot(1, 2, 1)
+plot_train_history(history, 'loss', 'val_loss')
+plt.subplot(1, 2, 2)
+plot_train_history(history, 'accuracy', 'val_accuracy')
+plt.show()
+
 
 # compute final accuracy on training and test sets
 y_pred = model.predict([tr_pairs[:, 0], tr_pairs[:, 1]])
@@ -128,36 +146,3 @@ te_acc = compute_accuracy(te_y, y_pred)
 
 print('* Accuracy on training set: %0.2f%%' % (100 * tr_acc))
 print('* Accuracy on test set: %0.2f%%' % (100 * te_acc))
-
-
-from keras.models import Sequential
-from keras.layers import LSTM, Dense
-
-import numpy as np
-data_dim = 16
-timesteps = 8
-num_classes = 10
-
-# expected input data shape: (batch_size, timesteps, data_dim)
-model = Sequential()
-model.add(LSTM(32, return_sequences=True,
-               input_shape=(timesteps, data_dim)))  # returns a sequence of vectors of dimension 32
-model.add(LSTM(32, return_sequences=True))  # returns a sequence of vectors of dimension 32
-model.add(LSTM(32))  # return a single vector of dimension 32
-model.add(Dense(10, activation='softmax'))
-
-model.compile(loss='categorical_crossentropy',
-              optimizer='sgd',
-              metrics=['accuracy'])
-
-# Generate dummy training data
-x_train = np.random.random((1000, timesteps, data_dim))
-y_train = np.random.random((1000, num_classes))
-
-# Generate dummy validation data
-x_val = np.random.random((100, timesteps, data_dim))
-y_val = np.random.random((100, num_classes))
-
-model.fit(x_train, y_train,
-          batch_size=64, epochs=1,
-          validation_data=(x_val, y_val))
