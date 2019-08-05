@@ -24,4 +24,4 @@
     2. Hamming Distance Metric Learning(https://github.com/norouzi/hdml)
     3. Learning to Compare Image Patches via Convolutional Neural Networks
 3. mnist_siamese1~5是与siamese网络相关的一些方法，在结果上可能并没有做到优化。
-
+    -- mnist_siamese1~4的准确率较原版没有太大的改变在97.4%上下浮动，mnist_siamese5的准确率较低在93%上下浮动
